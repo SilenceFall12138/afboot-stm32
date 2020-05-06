@@ -22,7 +22,7 @@
 
 #define RCC_AHB3ENR_FMC		(1 << 0)
 
-#define RCC_APB1ENR_USART3EN	(1 << 18)
+#define RCC_APB2ENR_USART1EN	(1 << 4)
 
 #define RCC_APB2ENR_SYSCFGEN	(1 << 14)
 
@@ -37,8 +37,8 @@
 #define FLASH_CR_ERRIE		(1 << 25)
 #define FLASH_CR_LOCK		(1UL << 31)
 
-#define CONFIG_HSE_HZ	8000000
-#define CONFIG_PLL_M	8
+#define CONFIG_HSE_HZ	25000000
+#define CONFIG_PLL_M	25
 #define CONFIG_PLL_N	360
 #define CONFIG_PLL_P	2
 #define CONFIG_PLL_Q	7
@@ -180,7 +180,7 @@ static void gpio_set_usart(char bank, uint8_t port)
 	gpio_set_alt(bank, port, 0, GPIOx_OSPEEDR_OSPEEDRy_FAST, 1, 0x7);
 }
 
-#define USART3_BASE	0x40004800
+#define USART1_BASE	0x40011000
 
 #define USART_SR_TXE	(1 << 7)
 
@@ -190,40 +190,40 @@ static void gpio_set_usart(char bank, uint8_t port)
 
 static void usart_setup(void)
 {
-	volatile uint32_t *RCC_APB1ENR = (void *)(RCC_BASE + 0x40);
-	volatile uint32_t *USART3_BRR = (void *)(USART3_BASE + 0x08);
-	volatile uint32_t *USART3_CR1 = (void *)(USART3_BASE + 0x0C);
-	volatile uint32_t *USART3_CR2 = (void *)(USART3_BASE + 0x10);
-	volatile uint32_t *USART3_CR3 = (void *)(USART3_BASE + 0x14);
-	const uint32_t apb_clk_hz = 45000000;
+	volatile uint32_t *RCC_APB2ENR = (void *)(RCC_BASE + 0x44);
+	volatile uint32_t *USART1_BRR = (void *)(USART1_BASE + 0x08);
+	volatile uint32_t *USART1_CR1 = (void *)(USART1_BASE + 0x0C);
+	volatile uint32_t *USART1_CR2 = (void *)(USART1_BASE + 0x10);
+	volatile uint32_t *USART1_CR3 = (void *)(USART1_BASE + 0x14);
+	const uint32_t apb_clk_hz = 90000000;
 	uint32_t int_div, frac_div, val;
+	int USART1_BaudRate = 115200;
+	*RCC_APB2ENR |= RCC_APB2ENR_USART1EN;
 
-	*RCC_APB1ENR |= RCC_APB1ENR_USART3EN;
+	gpio_set_usart('A', 9);
+	gpio_set_usart('A', 10);
 
-	gpio_set_usart('C', 10);
-	gpio_set_usart('C', 11);
+	*USART1_CR1 = USART_CR1_TE | USART_CR1_RE;
+	*USART1_CR2 = 0;
+	*USART1_CR3 = 0;
 
-	*USART3_CR1 = USART_CR1_TE | USART_CR1_RE;
-	*USART3_CR2 = 0;
-	*USART3_CR3 = 0;
-
-	int_div = (25 * apb_clk_hz) / (4 * 115200);
+	int_div = (25 * apb_clk_hz) / (4 * USART1_BaudRate);
 	val = (int_div / 100) << 4;
 	frac_div = int_div - 100 * (val >> 4);
 	val |= ((frac_div * 16 + 50) / 100) & 0xf;
-	*USART3_BRR = val;
+	*USART1_BRR = val;
 
-	*USART3_CR1 |= USART_CR1_UE;
+	*USART1_CR1 |= USART_CR1_UE;
 }
 
 static void usart_putch(char ch)
 {
-	volatile uint32_t *USART3_SR  = (void *)(USART3_BASE + 0x00);
-	volatile uint32_t *USART3_DR  = (void *)(USART3_BASE + 0x04);
+	volatile uint32_t *USART1_SR  = (void *)(USART1_BASE + 0x00);
+	volatile uint32_t *USART1_DR  = (void *)(USART1_BASE + 0x04);
 
-	while (!(*USART3_SR & USART_SR_TXE)) {
+	while (!(*USART1_SR & USART_SR_TXE)) {
 	}
-	*USART3_DR = ch;
+	*USART1_DR = ch;
 }
 
 void start_kernel(void);
@@ -261,7 +261,7 @@ int main(void)
 	volatile uint32_t *SYSCFG_MEMRMP = (void *)(SYSCFG_BASE + 0x00);
 	uint32_t *ptr;
 	int i;
-
+# if 0
 	if (*FLASH_CR & FLASH_CR_LOCK) {
 		*FLASH_KEYR = 0x45670123;
 		*FLASH_KEYR = 0xCDEF89AB;
@@ -269,9 +269,9 @@ int main(void)
 	*FLASH_CR &= ~(FLASH_CR_ERRIE | FLASH_CR_EOPIE | FLASH_CR_PSIZE_MASK);
 	*FLASH_CR |= FLASH_CR_PSIZE_X32;
 	*FLASH_CR |= FLASH_CR_LOCK;
-
+#endif
 	clock_setup();
-
+#if 0
 	gpio_set('G', 13, 0, GPIOx_MODER_MODERy_GPOUTPUT,
 		GPIOx_OSPEEDR_OSPEEDRy_FAST, 0);
 	gpio_set('G', 14, 0, GPIOx_MODER_MODERy_GPOUTPUT,
@@ -342,19 +342,24 @@ int main(void)
 
 	*RCC_APB2ENR |= RCC_APB2ENR_SYSCFGEN;
 	*SYSCFG_MEMRMP = SYSCFG_MEMRMP_SWP_FMC << 10;
-
+#endif
 	usart_setup();
 	usart_putch('.');
-
-	while (0) {
-		*GPIOG_BSRR = (1 << 13) | (1 << (14 + 16));
+	char str[] = "Hello World!\r\n";
+	while (1) {
+		for(i = 0; i < (sizeof(str)/sizeof(char) - 1); i++)
+			usart_putch(str[i]);
+		for (i = 0; i < 10000000; i++) {
+			asm volatile ("nop");
+		}
+/*		*GPIOG_BSRR = (1 << 13) | (1 << (14 + 16));
 		for (i = 0; i < 10000000; i++) {
 			asm volatile ("nop");
 		}
 		*GPIOG_BSRR = (1 << 14) | (1 << (13 + 16));
 		for (i = 0; i < 10000000; i++) {
 			asm volatile ("nop");
-		}
+		}  */
 	}
 
 	start_kernel();
